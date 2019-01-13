@@ -1,0 +1,355 @@
+<!-- 
+Mike Heald 
+12/30/2018
+-->
+<!doctype html>
+<html lang="en">
+	<head>
+		<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.14.1/dist/tf.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js"></script>
+	</head>
+	<body onload="genUserData()">
+	<div>
+	<h1>Arbitrary Function Approximation</h1>
+	</div>
+	<div>
+	<p>
+	I wrote this code to demonstrate the application of artificial neural networks as arbitrary function approximators (regression analysis). 
+	</p>
+	<p>
+	Select an example from the drop down menu or write your own function in the text area below. Click the "Generate Data" button to randomly sample from the provided function with noise. Then click the "Fit Data" button to train the neural network on the generated data.
+	</p>
+	</div>
+	<div>
+	<p>
+		Load example: <select id="presets">
+					<option value="sin">sin(x)</option>
+					<option value="abs">abs(x)</option>
+					<option value="dirac">dirac delta</option>
+					<option value="relu">ReLU</option>
+					<option value="step">step</option>
+					
+			<select>
+	</p>
+	</div>
+
+	<div>
+	<table style="border-collapse: collapse; " >
+		<tr>
+			<th>
+				Neural Net Hyperparameters
+			</th>
+			<th>
+				Function to fit
+			</th>
+			<th>
+				Training Hyperparameters
+			</th>
+
+		</tr>
+		<tr>
+			<td style="border-right: solid 1px #000; padding: 0px 10px 0px 0px;" >
+				Activation: <select id="activation">
+								<option value="elu">Exponential Linear Unit</option>
+								<option value="hardSigmoid">Hard Sigmoid</option>
+								<option value="linear">Linear</option>
+								<option value="relu">Rectified Linear Unit</option>
+								<option value="selu">Scaled Exponential Linear Unit</option>
+								<option value="sigmoid">Sigmoid</option>
+								<option value="softmax">Softmax</option>
+								<option value="softplus">Softplus</option>
+								<option value="softsign">Softsign</option>
+								<option selected value="tanh">Tanh</option>
+							<select>
+			</td>
+			
+			<td style="border-right: solid 1px #000; padding: 0px 10px 0px 10px;">
+				Number of data points: <input type='number' id='data_points' value='128' style="width: 5em"/>
+			</td>
+			
+			<td style=" padding: 0px 10px 0px 10px;">
+				Epochs: <input type='number' id='epochs' value='180' style="width: 4em" />
+			</td>
+
+
+		</tr>
+		<tr>
+			<td style="border-right: solid 1px #000">
+				Optimizer: <select id="optimizer">
+								<option value="sgd">Stochastic Gradient Descent</option>
+								<option value="adagrad">Adagrad</option>
+								<option value="adadelta">Adadelta</option>
+								<option selected value="adam">Adam</option>
+								<option value="adamax">Adamax</option>
+								<option value="rmsprop">RMSprop</option>
+							<select>
+			</td>
+			<td style="border-right: solid 1px #000; padding: 0px 10px 0px 10px;">
+				<i>x</i> Range: <input type='number' id='x_min' value='-4' style="width: 3em" /> <= <i>x</i> < <input type='number' id='x_max' value='10' style="width: 3em"/>
+			</td>
+			<td style="padding: 0px 10px 0px 10px;">
+				Batch Size: <input type='number' id='batch_size' value='32'  style="width: 3em"/>
+			</td>
+		</tr>
+		<tr>
+			<td style="border-right: solid 1px #000">
+				Loss: <select id="loss">
+								<option value="absoluteDifference">Absolute Difference</option>
+								<option value="computeWeightedLoss">Compute Weighted Loss</option>
+								<option value="cosineDistance">Cosine Difference</option>
+								<option value="hingeLoss">Hinge Loss</option>
+								<option value="huberLoss">Huber Loss</option>
+								<option value="logLoss">Log Loss</option>
+								<option selected value="meanSquaredError">Mean Squared Error</option>
+								<option value="sigmoidCrossEntropy">Sigmoid Cross Entropy</option>
+								<option value="softmaxCrossEntropy">Softmax Cross Entropy</option>
+					  <select>
+			</td>
+			<td style="border-right: solid 1px #000; padding: 0px 10px 0px 10px;">
+				Noise Variance: <input type='number' id='variance' value='0.1' style="width: 4em"/>
+			</td>
+		</tr>
+		<tr>
+			<td style="border-right: solid 1px #000">
+				Hidden Layers:  <input type='number' id='hidden_layers' value='3' style="width: 3em" />
+			</td>
+			<td style="border-right: solid 1px #000; padding: 0px 10px 0px 10px;">
+				
+			</td>
+		</tr>
+		<tr>
+			<td style="border-right: solid 1px #000">
+				Neurons per layer:  <input type='number' id='neurons' value='128' style="width: 4em" />
+			</td>
+			<td style="border-right: solid 1px #000; padding: 0px 10px 0px 10px;">
+				
+			</td>
+
+		</tr>
+		<tr>
+			<td style="border-right: solid 1px #000">
+			</td >
+			<td style="border-right: solid 1px #000; padding: 0px 10px 0px 10px;">
+				Function (provide valid javascript): <textarea id='func' rows=4 cols=14 style="vertical-align:top"> y = Math.sin(x) </textarea >
+			</td>
+		</tr>
+	</table>
+	
+	<div>
+	<input type='button' id='genData_btn' value='Generate Data' />
+	</div>
+	
+	<div>
+	<input type='button' id='fit' value='Fit Data' />
+	</div>
+	
+	</div>
+	<div>
+	<canvas id="chart"></canvas>
+	</div>
+	
+	
+	<script>
+	var MODEL;
+	var GEN_DATA = [];
+	var CTX = document.getElementById('chart').getContext('2d');
+	var CHART = new Chart(CTX, {
+		type: 'scatter',
+		data: {
+			datasets: []
+		},
+		options: { responsive: true}
+	});
+	
+	
+	function generateData(n, variance, x_max, x_min, y_func){
+		data = [];
+		
+		for(i=0; i < n; i++){
+			let x = Math.random() * (x_max - x_min) + x_min;
+			let y = y_func(x) + (Math.random() * 2*variance - variance);
+			data.push({x:x, y:y});
+		}
+		
+		return data;
+	}
+
+	function createModel(layers, neurons, activation, loss, opt){
+		const model = tf.sequential();
+		
+		model.add(tf.layers.dense({units:neurons, inputShape:[1]}));
+		for(i=0;i<layers;i++){
+			model.add(tf.layers.dense({units:neurons, inputShape:[neurons], activation:activation}));
+		}
+		model.add(tf.layers.dense({units:1, inputShape:[neurons]}));
+		
+		model.compile({loss:loss, optimizer:opt, metrics:[tf.metrics.meanSquaredError]})
+		
+		return model;
+	}
+	
+	function compileUserModel(){
+		layers = parseInt(document.getElementById('hidden_layers').value);
+		neurons = parseInt(document.getElementById('neurons').value);
+		activation = document.getElementById('activation').value;
+		loss = eval("tf.losses."+document.getElementById('loss').value);
+		opt = document.getElementById('optimizer').value;
+		
+		MODEL = createModel(layers, neurons, activation, loss, opt);
+	}
+	
+	function genUserData() {
+		user_func_str = document.getElementById('func').value;
+		y_func_str = "(x) => {let y = 0;" + user_func_str + "; return y;}";
+		y_func = eval(y_func_str);
+		
+		n = parseInt(document.getElementById('data_points').value);
+		variance = parseFloat(document.getElementById('variance').value);
+		x_max = parseFloat(document.getElementById('x_max').value);
+		x_min = parseFloat(document.getElementById('x_min').value);
+		
+		gen_data = generateData(n, variance, x_max, x_min, y_func);
+		GEN_DATA = gen_data;
+		CHART.data.datasets = []
+		CHART.data.datasets.push({
+					label: "Generated Data",
+					borderColor: 'rgb(255, 0, 0)',
+					data: gen_data,
+					showLine: false
+				});
+		CHART.update();
+	}
+	
+	
+	document.getElementById('genData_btn').onclick = genUserData;
+	
+	document.getElementById('fit').onclick = function(){
+		compileUserModel();
+		fitNN(parseInt(document.getElementById('epochs').value)/10);
+	};
+	
+	function fitNN(loop){
+		let x_max = parseFloat(document.getElementById('x_max').value);
+		let x_min = parseFloat(document.getElementById('x_min').value);
+		
+		let epochs = parseInt(document.getElementById('epochs').value);
+		let batch_size = parseInt(document.getElementById('batch_size').value);
+		
+		let X = GEN_DATA.map(data => data.x);
+		let Y = GEN_DATA.map(data => data.y);
+		
+		let predict_x = [...Array(50).keys()].map(x => x * (1/50) * (x_max - x_min) + x_min);
+		
+
+
+		MODEL.fit(tf.tensor(X), tf.tensor(Y), {epochs:10, batchSize:batch_size, shuffle:true}).then(() => {
+		
+			let prediction = MODEL.predict(tf.tensor2d(predict_x, [predict_x.length,1])).dataSync();
+			
+			let plot_data = []
+			
+			for(i=0; i < predict_x.length; i++){
+				plot_data.push({x:predict_x[i], y:prediction[i]});
+			}
+		
+			if(CHART.data.datasets.length > 1){
+				CHART.data.datasets.pop();
+			}
+			
+			CHART.data.datasets.push({
+						label: "Fit",
+						fill: false,
+						borderColor: 'rgb(0, 0, 255)',
+						data: plot_data,
+						showLine: true,
+						pointRadius: 0
+					});
+			CHART.update(100);
+			
+			if(loop>0){
+				fitNN(loop-1);
+			}
+		});
+		
+	}
+	
+	
+	//presets
+	
+	document.getElementById("presets").onchange = () => {
+		preset_selection = document.getElementById("presets").value;
+		
+		if(preset_selection == "sin"){
+			document.getElementById('activation').value = 'tanh';
+			document.getElementById('optimizer').value = 'adam';
+			document.getElementById('loss').value = 'meanSquaredError';
+			document.getElementById('hidden_layers').value = 3;
+			document.getElementById('neurons').value = 128;
+			document.getElementById('func').value = "y = Math.sin(x)";
+			document.getElementById('data_points').value = 128;
+			document.getElementById('x_min').value = -4;
+			document.getElementById('x_max').value = 10;
+			document.getElementById('variance').value = 0.1;
+			document.getElementById('epochs').value = 180;
+			document.getElementById('batch_size').value = 32;
+		} else if (preset_selection == "abs"){
+			document.getElementById('activation').value = 'relu';
+			document.getElementById('optimizer').value = 'rmsprop';
+			document.getElementById('loss').value = 'meanSquaredError';
+			document.getElementById('hidden_layers').value = 1;
+			document.getElementById('neurons').value = 16;
+			document.getElementById('func').value = "y = Math.abs(x)";
+			document.getElementById('data_points').value = 64;
+			document.getElementById('x_min').value = -2;
+			document.getElementById('x_max').value = 2;
+			document.getElementById('variance').value = 0.1;
+			document.getElementById('epochs').value = 90;
+			document.getElementById('batch_size').value = 32;
+		} else if (preset_selection == "dirac"){
+			document.getElementById('activation').value = 'relu';
+			document.getElementById('optimizer').value = 'adam';
+			document.getElementById('loss').value = 'meanSquaredError';
+			document.getElementById('hidden_layers').value = 3;
+			document.getElementById('neurons').value = 32;
+			document.getElementById('func').value = "y = 1/(0.1*Math.sqrt(3.1415)) * Math.exp(-1 * ((x/0.1)*(x/0.1)))";
+			document.getElementById('data_points').value = 128;
+			document.getElementById('x_min').value = -1;
+			document.getElementById('x_max').value = 1;
+			document.getElementById('variance').value = 0.4;
+			document.getElementById('epochs').value = 80;
+			document.getElementById('batch_size').value = 32;
+		} else if (preset_selection == "relu"){
+			document.getElementById('activation').value = 'relu';
+			document.getElementById('optimizer').value = 'rmsprop';
+			document.getElementById('loss').value = 'meanSquaredError';
+			document.getElementById('hidden_layers').value = 1;
+			document.getElementById('neurons').value = 8;
+			document.getElementById('func').value = "if(x<=0){ y = 0 } else { y = x }";
+			document.getElementById('data_points').value = 128;
+			document.getElementById('x_min').value = -1;
+			document.getElementById('x_max').value = 1;
+			document.getElementById('variance').value = 0.01;
+			document.getElementById('epochs').value = 80;
+			document.getElementById('batch_size').value = 32;
+		} else if (preset_selection == "step"){
+			document.getElementById('activation').value = 'relu';
+			document.getElementById('optimizer').value = 'adam';
+			document.getElementById('loss').value = 'meanSquaredError';
+			document.getElementById('hidden_layers').value = 2;
+			document.getElementById('neurons').value = 128;
+			document.getElementById('func').value = "if(x<=-0.5 || x >=0.5){ y = 0 } else { y = 1 }";
+			document.getElementById('data_points').value = 128;
+			document.getElementById('x_min').value = -1;
+			document.getElementById('x_max').value = 1;
+			document.getElementById('variance').value = 0;
+			document.getElementById('epochs').value = 120;
+			document.getElementById('batch_size').value = 32;
+		}
+		
+		genUserData();
+	}
+
+	
+	</script>
+	</body>
+</html>
